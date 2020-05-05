@@ -52,6 +52,7 @@ import (
 
 	cdiv1 "kubevirt.io/containerized-data-importer/pkg/apis/core/v1alpha1"
 	"kubevirt.io/containerized-data-importer/pkg/common"
+	"kubevirt.io/containerized-data-importer/pkg/util/naming"
 )
 
 const controllerAgentName = "datavolume-controller"
@@ -790,7 +791,7 @@ func buildHTTPClient() *http.Client {
 // that 'owns' it.
 func newPersistentVolumeClaim(dataVolume *cdiv1.DataVolume) (*corev1.PersistentVolumeClaim, error) {
 	labels := map[string]string{
-		"cdi-controller": dataVolume.Name,
+		"cdi-controller": naming.GetLabelName(dataVolume.Name),
 		"app":            "containerized-data-importer",
 	}
 
