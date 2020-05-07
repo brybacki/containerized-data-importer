@@ -155,8 +155,10 @@ func (r *ImportReconciler) Reconcile(req reconcile.Request) (reconcile.Result, e
 	}
 
 	if !shouldReconcilePVC(pvc, log) {
-		log.V(1).Info("Should not reconcile this PVC", "pvc.annotation.phase.complete", isPVCComplete(pvc),
-			"pvc.annotations.endpoint", checkPVC(pvc, AnnEndpoint, log), "pvc.annotations.source", checkPVC(pvc, AnnSource, log))
+		log.V(1).Info("Should not reconcile this PVC",
+			"pvc.annotation.phase.complete", isPVCComplete(pvc),
+			"pvc.annotations.endpoint", checkPVC(pvc, AnnEndpoint, log),
+			"pvc.annotations.source", checkPVC(pvc, AnnSource, log))
 		return reconcile.Result{}, nil
 	}
 
@@ -178,7 +180,7 @@ func (r *ImportReconciler) Reconcile(req reconcile.Request) (reconcile.Result, e
 }
 
 func (r *ImportReconciler) findImporterPod(pvc *corev1.PersistentVolumeClaim, log logr.Logger) (*corev1.Pod, error) {
-	podName := importPodNameFromPvc(pvc)
+	podName := getImportPodNameFromPvc(pvc)
 	pod := &corev1.Pod{}
 	err := r.client.Get(context.TODO(), types.NamespacedName{Name: podName, Namespace: pvc.GetNamespace()}, pod)
 
@@ -192,6 +194,7 @@ func (r *ImportReconciler) findImporterPod(pvc *corev1.PersistentVolumeClaim, lo
 
 	log.V(1).Info("Pod is owned by PVC", pod.Name, pvc.Name)
 	return pod, nil
+
 }
 
 func (r *ImportReconciler) reconcilePvc(pvc *corev1.PersistentVolumeClaim, log logr.Logger) (reconcile.Result, error) {
@@ -206,7 +209,21 @@ func (r *ImportReconciler) reconcilePvc(pvc *corev1.PersistentVolumeClaim, log l
 			log.V(1).Info("PVC is already complete")
 		} else if pvc.DeletionTimestamp == nil {
 			// Create importer pod, make sure the PVC owns it.
-			if err := r.createImporterPod(pvc); err != nil {
+			var scratchPvcName *string
+			requiresScratch := r.requiresScratchSpace(pvc)
+			if requiresScratch {
+				// TODO: name from annotation?
+				name := scratchNameFromPvc(pvc)
+				scratchPvcName = &name
+			}
+
+			newPod, err := r.createImporterPod(pvc, scratchPvcName)
+			if err != nil {
+				log.V(1).Info("Creating pod error: ", "err", err.Error)
+				return reconcile.Result{}, err
+			}
+			// Pod exists, we need to update the PVC status.
+			if err := r.updatePvcFromPod(pvc, newPod, scratchPvcName, log); err != nil {
 				return reconcile.Result{}, err
 			}
 		}
@@ -220,7 +237,7 @@ func (r *ImportReconciler) reconcilePvc(pvc *corev1.PersistentVolumeClaim, log l
 		}
 
 		// Pod exists, we need to update the PVC status.
-		if err := r.updatePvcFromPod(pvc, pod, log); err != nil {
+		if err := r.updatePvcFromPod(pvc, pod, scratchPvcName, log); err != nil {
 			return reconcile.Result{}, err
 		}
 	}
@@ -297,34 +314,22 @@ func (r *ImportReconciler) updatePVC(pvc *corev1.PersistentVolumeClaim, log logr
 	return nil
 }
 
-func (r *ImportReconciler) createImporterPod(pvc *corev1.PersistentVolumeClaim) error {
+func (r *ImportReconciler) createImporterPod(pvc *corev1.PersistentVolumeClaim, scratchPvcName *string) (*corev1.Pod, error) {
 	r.log.V(1).Info("Creating importer POD for PVC", "pvc.Name", pvc.Name)
-	var scratchPvcName *string
 	var err error
-
-	requiresScratch := r.requiresScratchSpace(pvc)
-	if requiresScratch {
-		name := scratchNameFromPvc(pvc)
-		scratchPvcName = &name
-	}
 
 	podEnvVar, err := r.createImportEnvVar(pvc)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// all checks passed, let's create the importer pod!
 	pod, err := createImporterPod(r.log, r.client, r.image, r.verbose, r.pullPolicy, podEnvVar, pvc, scratchPvcName)
-
 	if err != nil {
-		return err
+		return nil, err
 	}
-	r.log.V(1).Info("Created POD", "pod.Name", pod.Name)
-	if requiresScratch {
-		r.log.V(1).Info("POD requires scratch space")
-		return r.createScratchPvcForPod(pvc, pod)
-	}
-	return nil
+
+	return pod, nil
 }
 
 func (r *ImportReconciler) createImportEnvVar(pvc *corev1.PersistentVolumeClaim) (*importPodEnvVar, error) {
@@ -535,7 +540,18 @@ func getDiskID(pvc *corev1.PersistentVolumeClaim) string {
 	return diskID
 }
 
-func importPodNameFromPvc(pvc *corev1.PersistentVolumeClaim) string {
+func getImportPodNameFromPvc(pvc *corev1.PersistentVolumeClaim) string {
+	podName, ok := pvc.Annotations[AnnImportPod]
+	if ok {
+		return podName
+	}
+	return ""
+	// fallback to legacy naming, in fact the following function is fully compatible with legacy
+	// name concatenation "importer-{pvc.Name}" if the name fits in the size limits, as of 05-2020 (version?)
+	//return naming.GetResourceName(common.ImporterPodName, pvc.Name)
+}
+
+func createImportPodNameFromPvc(pvc *corev1.PersistentVolumeClaim) string {
 	return naming.GetResourceName(common.ImporterPodName, pvc.Name)
 }
 
@@ -564,7 +580,7 @@ func createImporterPod(log logr.Logger, client client.Client, image, verbose, pu
 // makeImporterPodSpec creates and return the importer pod spec based on the passed-in endpoint, secret and pvc.
 func makeImporterPodSpec(namespace, image, verbose, pullPolicy string, podEnvVar *importPodEnvVar, pvc *corev1.PersistentVolumeClaim, scratchPvcName *string, podResourceRequirements *corev1.ResourceRequirements) *corev1.Pod {
 	// importer pod name contains the pvc name
-	podName := importPodNameFromPvc(pvc)
+	podName := createImportPodNameFromPvc(pvc)
 
 	blockOwnerDeletion := true
 	isController := true
