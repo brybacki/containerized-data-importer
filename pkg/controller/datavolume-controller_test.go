@@ -197,7 +197,7 @@ var _ = Describe("Datavolume controller reconcile loop", func() {
 			AnnDefaultStorageClass: "true",
 		}, "csi-plugin")
 		dv.Spec.PVC.StorageClassName = &scName
-		pvc := createPvcInStorageClass("test", metav1.NamespaceDefault, &scName, nil, nil)
+		pvc := createPvcInStorageClass("test", metav1.NamespaceDefault, &scName, nil, nil, corev1.ClaimBound)
 		expectedSnapshotClass := "snap-class"
 		snapClass := createSnapshotClass(expectedSnapshotClass, nil, "csi-plugin")
 		reconciler := createDatavolumeReconciler(sc, dv, pvc, snapClass)
@@ -587,7 +587,7 @@ var _ = Describe("Smart clone", func() {
 		targetSc := "testsc"
 		dv.Spec.PVC.StorageClassName = &targetSc
 		sourceSc := "testsc2"
-		pvc := createPvcInStorageClass("test", metav1.NamespaceDefault, &sourceSc, nil, nil)
+		pvc := createPvcInStorageClass("test", metav1.NamespaceDefault, &sourceSc, nil, nil, corev1.ClaimBound)
 		reconciler := createDatavolumeReconciler(dv, pvc)
 		reconciler.extClientSet = extfake.NewSimpleClientset(createVolumeSnapshotContentCrd(), createVolumeSnapshotClassCrd(), createVolumeSnapshotCrd())
 		snapclass, err := reconciler.getSnapshotClassForSmartClone(dv)
@@ -601,7 +601,7 @@ var _ = Describe("Smart clone", func() {
 		scName := "testsc"
 		dv.Spec.PVC.StorageClassName = &scName
 		dv.Spec.Source.PVC.Namespace = "other-ns"
-		pvc := createPvcInStorageClass("test", "other-ns", &scName, nil, nil)
+		pvc := createPvcInStorageClass("test", "other-ns", &scName, nil, nil, corev1.ClaimBound)
 		reconciler := createDatavolumeReconciler(dv, pvc)
 		reconciler.extClientSet = extfake.NewSimpleClientset(createVolumeSnapshotContentCrd(), createVolumeSnapshotClassCrd(), createVolumeSnapshotCrd())
 		snapclass, err := reconciler.getSnapshotClassForSmartClone(dv)
@@ -614,7 +614,7 @@ var _ = Describe("Smart clone", func() {
 		dv := newCloneDataVolume("test-dv")
 		scName := "testsc"
 		dv.Spec.PVC.StorageClassName = &scName
-		pvc := createPvcInStorageClass("test", metav1.NamespaceDefault, &scName, nil, nil)
+		pvc := createPvcInStorageClass("test", metav1.NamespaceDefault, &scName, nil, nil, corev1.ClaimBound)
 		reconciler := createDatavolumeReconciler(dv, pvc)
 		reconciler.extClientSet = extfake.NewSimpleClientset(createVolumeSnapshotContentCrd(), createVolumeSnapshotClassCrd(), createVolumeSnapshotCrd())
 		snapclass, err := reconciler.getSnapshotClassForSmartClone(dv)
@@ -630,7 +630,7 @@ var _ = Describe("Smart clone", func() {
 			AnnDefaultStorageClass: "true",
 		})
 		dv.Spec.PVC.StorageClassName = &scName
-		pvc := createPvcInStorageClass("test", metav1.NamespaceDefault, &scName, nil, nil)
+		pvc := createPvcInStorageClass("test", metav1.NamespaceDefault, &scName, nil, nil, corev1.ClaimBound)
 		reconciler := createDatavolumeReconciler(sc, dv, pvc)
 		reconciler.extClientSet = extfake.NewSimpleClientset(createVolumeSnapshotContentCrd(), createVolumeSnapshotClassCrd(), createVolumeSnapshotCrd())
 		snapclass, err := reconciler.getSnapshotClassForSmartClone(dv)
@@ -646,7 +646,7 @@ var _ = Describe("Smart clone", func() {
 			AnnDefaultStorageClass: "true",
 		}, "csi-plugin")
 		dv.Spec.PVC.StorageClassName = &scName
-		pvc := createPvcInStorageClass("test", metav1.NamespaceDefault, &scName, nil, nil)
+		pvc := createPvcInStorageClass("test", metav1.NamespaceDefault, &scName, nil, nil, corev1.ClaimBound)
 		expectedSnapshotClass := "snap-class"
 		snapClass := createSnapshotClass(expectedSnapshotClass, nil, "csi-plugin")
 		reconciler := createDatavolumeReconciler(sc, dv, pvc, snapClass)
