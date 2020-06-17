@@ -161,6 +161,17 @@ func (r *UploadReconciler) reconcilePVC(log logr.Logger, pvc *corev1.PersistentV
 	}
 
 	if pod == nil {
+		// if used by any other pod, then we need to wait until it releases the pvd
+		// this can happen when the pod is scheduled on a Wait For First Consumer storage class
+		// to force correct pvc scheduling and binding
+		pvcAlreadyUsed, err := isPvcUsedByAnyPod(r.client, pvc, log)
+		if err != nil {
+			return reconcile.Result{}, err
+		} else if pvcAlreadyUsed {
+			log.V(1).Info("not doing anything with PVC, alreadyUsed")
+			return reconcile.Result{Requeue: true}, nil
+		}
+
 		podName, ok := pvc.Annotations[AnnUploadPod]
 		scratchPVCName := createScratchPvcNameFromPvc(pvc, isCloneTarget)
 
