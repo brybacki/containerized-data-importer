@@ -22,12 +22,12 @@ type FeatureGates struct {
 }
 
 // NewFeatureGates creates a new instance of the feature gates
-func NewFeatureGates(c client.Client) (*FeatureGates, error) {
+func NewFeatureGates(c client.Client) *FeatureGates {
 	fg := &FeatureGates{
 		client: c,
 		lock:   &sync.Mutex{},
 	}
-	return fg, nil
+	return fg
 }
 
 func (f *FeatureGates) isFeatureGateEnabled(featureGate string) bool {

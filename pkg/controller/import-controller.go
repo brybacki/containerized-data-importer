@@ -84,6 +84,7 @@ type ImportReconciler struct {
 	image          string
 	verbose        string
 	pullPolicy     string
+	featureGates   *FeatureGates
 }
 
 type importPodEnvVar struct {
@@ -97,8 +98,10 @@ func NewImportController(mgr manager.Manager, log logr.Logger, importerImage, pu
 		Scheme: mgr.GetScheme(),
 		Mapper: mgr.GetRESTMapper(),
 	})
+	client := mgr.GetClient()
+	featureGates := NewFeatureGates(client)
 	reconciler := &ImportReconciler{
-		client:         mgr.GetClient(),
+		client:         client,
 		uncachedClient: uncachedClient,
 		scheme:         mgr.GetScheme(),
 		log:            log.WithName("import-controller"),
@@ -106,6 +109,7 @@ func NewImportController(mgr manager.Manager, log logr.Logger, importerImage, pu
 		verbose:        verbose,
 		pullPolicy:     pullPolicy,
 		recorder:       mgr.GetEventRecorderFor("import-controller"),
+		featureGates:   featureGates,
 	}
 	importController, err := controller.New("import-controller", mgr, controller.Options{
 		Reconciler: reconciler,
@@ -134,10 +138,10 @@ func addImportControllerWatches(mgr manager.Manager, importController controller
 	return nil
 }
 
-func shouldReconcilePVC(pvc *corev1.PersistentVolumeClaim, log logr.Logger) bool {
+func shouldReconcilePVC(pvc *corev1.PersistentVolumeClaim, featureGates *FeatureGates, log logr.Logger) bool {
 	return !isPVCComplete(pvc) &&
 		(checkPVC(pvc, AnnEndpoint, log) || checkPVC(pvc, AnnSource, log)) &&
-		isBound(pvc, log)
+		!shouldSkipNotBound(pvc, featureGates, log)
 }
 
 func isPVCComplete(pvc *corev1.PersistentVolumeClaim) bool {
@@ -159,7 +163,7 @@ func (r *ImportReconciler) Reconcile(req reconcile.Request) (reconcile.Result, e
 		return reconcile.Result{}, err
 	}
 
-	if !shouldReconcilePVC(pvc, log) {
+	if !shouldReconcilePVC(pvc, r.featureGates, log) {
 		log.V(1).Info("Should not reconcile this PVC",
 			"pvc.annotation.phase.complete", isPVCComplete(pvc),
 			"pvc.annotations.endpoint", checkPVC(pvc, AnnEndpoint, log),
