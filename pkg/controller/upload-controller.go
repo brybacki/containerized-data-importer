@@ -82,6 +82,7 @@ type UploadReconciler struct {
 	uploadProxyServiceName string
 	serverCertGenerator    generator.CertGenerator
 	clientCAFetcher        fetcher.CertBundleFetcher
+	featureGates           *FeatureGates
 }
 
 // UploadPodArgs are the parameters required to create an upload pod
@@ -134,7 +135,8 @@ func (r *UploadReconciler) Reconcile(req reconcile.Request) (reconcile.Result, e
 }
 
 func (r *UploadReconciler) shouldReconcile(isUpload bool, isCloneTarget bool, pvc *v1.PersistentVolumeClaim, log logr.Logger) bool {
-	return (isUpload || isCloneTarget) && isBound(pvc, log)
+	return (isUpload || isCloneTarget) &&
+		!shouldSkipNotBound(pvc, r.featureGates, log)
 }
 
 func (r *UploadReconciler) reconcilePVC(log logr.Logger, pvc *corev1.PersistentVolumeClaim, isCloneTarget bool) (reconcile.Result, error) {
@@ -519,8 +521,10 @@ func (r *UploadReconciler) createUploadPod(args UploadPodArgs) (*v1.Pod, error) 
 
 // NewUploadController creates a new instance of the upload controller.
 func NewUploadController(mgr manager.Manager, log logr.Logger, uploadImage, pullPolicy, verbose string, serverCertGenerator generator.CertGenerator, clientCAFetcher fetcher.CertBundleFetcher) (controller.Controller, error) {
+	client := mgr.GetClient()
+	featureGates := NewFeatureGates(client)
 	reconciler := &UploadReconciler{
-		client:              mgr.GetClient(),
+		client:              client,
 		scheme:              mgr.GetScheme(),
 		log:                 log.WithName("upload-controller"),
 		image:               uploadImage,
@@ -529,6 +533,7 @@ func NewUploadController(mgr manager.Manager, log logr.Logger, uploadImage, pull
 		recorder:            mgr.GetEventRecorderFor("upload-controller"),
 		serverCertGenerator: serverCertGenerator,
 		clientCAFetcher:     clientCAFetcher,
+		featureGates:        featureGates,
 	}
 	uploadController, err := controller.New("upload-controller", mgr, controller.Options{
 		Reconciler: reconciler,

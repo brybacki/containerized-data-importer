@@ -844,7 +844,9 @@ var _ = Describe("[vendor:cnv-qe@redhat.com][level:component]DataVolume tests", 
 			dataVolume.Spec.Source.HTTP.CertConfigMap = cm
 			return dataVolume
 		}
-
+		createUploadDataVolume := func(dataVolumeName, size, url string) *cdiv1.DataVolume {
+			return utils.NewDataVolumeForUpload(dataVolumeName, size)
+		}
 		var original *bool
 		noSuchFileFileURL := utils.InvalidQcowImagesURL + "no-such-file.img"
 
@@ -930,9 +932,13 @@ var _ = Describe("[vendor:cnv-qe@redhat.com][level:component]DataVolume tests", 
 				fmt.Sprintf(utils.HTTPSTinyCoreQcow2URL, f.CdiInstallNs),
 				createBlankRawDataVolume,
 				cdiv1.Succeeded),
+			table.Entry("[test_id:4463] Upload - positive flow",
+				"dv-wffc-http-upload",
+				fmt.Sprintf(utils.HTTPSTinyCoreQcow2URL, f.CdiInstallNs),
+				createUploadDataVolume,
+				cdiv1.UploadReady),
 		)
 	})
-
 })
 
 func verifyConditions(actualConditions []cdiv1.DataVolumeCondition, startTime time.Time, testConditions ...*cdiv1.DataVolumeCondition) bool {
