@@ -141,7 +141,7 @@ func addImportControllerWatches(mgr manager.Manager, importController controller
 func shouldReconcilePVC(pvc *corev1.PersistentVolumeClaim, featureGates *FeatureGates, log logr.Logger) bool {
 	return !isPVCComplete(pvc) &&
 		(checkPVC(pvc, AnnEndpoint, log) || checkPVC(pvc, AnnSource, log)) &&
-		!shouldSkipNotBound(pvc, featureGates, log)
+		shouldHandlePvc(pvc, featureGates, log)
 }
 
 func isPVCComplete(pvc *corev1.PersistentVolumeClaim) bool {

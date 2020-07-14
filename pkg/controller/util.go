@@ -89,10 +89,13 @@ func checkPVC(pvc *v1.PersistentVolumeClaim, annotation string, log logr.Logger)
 	return true
 }
 
-// - when the SkipWFFCVolumesEnabled is true, the CDI controller will skip the PVC until it is bound by some external action,
-// - when the SkipWFFCVolumesEnabled is false, the CDI controller will create worker pods for the PVC (this will bind it)
-func shouldSkipNotBound(pvc *v1.PersistentVolumeClaim, featureGates *FeatureGates, log logr.Logger) bool {
-	return featureGates.SkipWFFCVolumesEnabled() && !isBound(pvc, log)
+// - when the SkipWFFCVolumesEnabled is true, the CDI controller will only handle BOUND the PVC
+// - when the SkipWFFCVolumesEnabled is false, the CDI controller will can handle it - it will create worker pods for the PVC (this will bind it)
+func shouldHandlePvc(pvc *v1.PersistentVolumeClaim, featureGates *FeatureGates, log logr.Logger) bool {
+	if featureGates.SkipWFFCVolumesEnabled() {
+		return isBound(pvc, log)
+	}
+	return true
 }
 
 func isBound(pvc *v1.PersistentVolumeClaim, log logr.Logger) bool {

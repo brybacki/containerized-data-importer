@@ -136,7 +136,7 @@ func (r *UploadReconciler) Reconcile(req reconcile.Request) (reconcile.Result, e
 
 func (r *UploadReconciler) shouldReconcile(isUpload bool, isCloneTarget bool, pvc *v1.PersistentVolumeClaim, log logr.Logger) bool {
 	return (isUpload || isCloneTarget) &&
-		!shouldSkipNotBound(pvc, r.featureGates, log)
+		shouldHandlePvc(pvc, r.featureGates, log)
 }
 
 func (r *UploadReconciler) reconcilePVC(log logr.Logger, pvc *corev1.PersistentVolumeClaim, isCloneTarget bool) (reconcile.Result, error) {
