@@ -52,6 +52,9 @@ var _ = Describe("[vendor:cnv-qe@redhat.com][level:component]DataVolume tests", 
 	httpsTinyCoreQcow2URL := func() string {
 		return fmt.Sprintf(utils.HTTPSTinyCoreQcow2URL, f.CdiInstallNs)
 	}
+	tinyCoreIsoRateLimitURL := func() string {
+		return fmt.Sprintf(utils.TinyCoreQcow2URLRateLimit+".gz", f.CdiInstallNs)
+	}
 	tinyCoreIsoRegistryURL := func() string {
 		return fmt.Sprintf(utils.TinyCoreIsoRegistryURL, f.CdiInstallNs)
 	}
@@ -1075,9 +1078,9 @@ var _ = Describe("[vendor:cnv-qe@redhat.com][level:component]DataVolume tests", 
 			testImageName     = "cirros-qcow2-1990.img"
 		)
 		var (
-			dataVolume              *cdiv1.DataVolume
-			err                     error
-			tinyCoreIsoRateLimitURL = func() string { return "http://cdi-file-host." + f.CdiInstallNs + ":82/cirros-qcow2-1990.img" }
+			dataVolume                         *cdiv1.DataVolume
+			err                                error
+			tinyCoreIsoRateLimitRemovedFileURL = func() string { return "http://cdi-file-host." + f.CdiInstallNs + ":82/cirros-qcow2-1990.img" }
 		)
 
 		BeforeEach(func() {
@@ -1112,7 +1115,7 @@ var _ = Describe("[vendor:cnv-qe@redhat.com][level:component]DataVolume tests", 
 		It("[test_id:1990] CDI Data Volume - file is removed from http server while import is in progress", func() {
 			dvName := "import-file-removed"
 			By(fmt.Sprintf("Creating new datavolume %s", dvName))
-			dv := utils.NewDataVolumeWithHTTPImport(dvName, "500Mi", tinyCoreIsoRateLimitURL())
+			dv := utils.NewDataVolumeWithHTTPImport(dvName, "500Mi", tinyCoreIsoRateLimitRemovedFileURL())
 			dataVolume, err = utils.CreateDataVolumeFromDefinition(f.CdiClient, f.Namespace.Name, dv)
 			Expect(err).ToNot(HaveOccurred())
 			f.ForceBindPvcIfDvIsWaitForFirstConsumer(dataVolume)
@@ -1253,6 +1256,60 @@ var _ = Describe("[vendor:cnv-qe@redhat.com][level:component]DataVolume tests", 
 
 			By(fmt.Sprintf("waiting for datavolume to match phase %s", string(cdiv1.Succeeded)))
 			err = utils.WaitForDataVolumePhase(f.CdiClient, f.Namespace.Name, cdiv1.Succeeded, dataVolume.Name)
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	FDescribe("Delete scratch PVC during import", func() {
+		var dataVolume *cdiv1.DataVolume
+
+		AfterEach(func() {
+			if dataVolume != nil {
+				By("[AfterEach] Clean up DV")
+				err := utils.DeleteDataVolume(f.CdiClient, f.Namespace.Name, dataVolume.Name)
+				Expect(err).ToNot(HaveOccurred())
+				dataVolume = nil
+			}
+		})
+
+		It("Should create a new scratch PVC when PVC is deleted during import", func() {
+			dvName := "scratch-space-delete"
+			By(fmt.Sprintf("Creating new datavolume %s", dvName))
+			dv := utils.NewDataVolumeWithHTTPImport(dvName, "500Mi", tinyCoreIsoRateLimitURL())
+			dataVolume, err := utils.CreateDataVolumeFromDefinition(f.CdiClient, f.Namespace.Name, dv)
+			Expect(err).ToNot(HaveOccurred())
+			f.ForceBindPvcIfDvIsWaitForFirstConsumer(dataVolume)
+
+			By("Waiting for DV's PVC")
+			_, err = utils.WaitForPVC(f.K8sClient, f.Namespace.Name, dataVolume.Name)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("Wait for import to start")
+			utils.WaitForDataVolumePhase(f.CdiClient, f.Namespace.Name, cdiv1.ImportInProgress, dataVolume.Name)
+
+			scratchPvcName := naming.GetResourceName(dataVolume.Name, common.ScratchNameSuffix)
+			By("Waiting for DV's scratch PVC " + scratchPvcName)
+			scratchPvc, err := utils.WaitForPVC(f.K8sClient, f.Namespace.Name, scratchPvcName)
+			Expect(err).ToNot(HaveOccurred())
+			scratchPvcUID := scratchPvc.GetUID()
+
+			By(fmt.Sprintf("Deleting scratch PVC %v (id: %v)", scratchPvcName, scratchPvcUID))
+			err = utils.DeletePVC(f.K8sClient, f.Namespace.Name, scratchPvc)
+			Expect(err).ToNot(HaveOccurred())
+			By("Wait for PVC to be deleted")
+			deleted, err := f.WaitPVCDeletedByUID(scratchPvc, 90*time.Second)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(deleted).To(BeTrue())
+			time.Sleep(30 * time.Second)
+
+			By("Wait for PVC to be recreated")
+			scratchPvc, err = utils.WaitForPVC(f.K8sClient, f.Namespace.Name, scratchPvcName)
+			Expect(err).ToNot(HaveOccurred())
+			By(fmt.Sprintf("Recreated PVC %v (id: %v)", scratchPvc.Name, scratchPvc.GetUID()))
+			Expect(scratchPvc.GetUID()).ToNot(Equal(scratchPvcUID))
+
+			By("Wait for DV to succeed")
+			err = utils.WaitForDataVolumePhaseWithTimeout(f.CdiClient, f.Namespace.Name, cdiv1.Succeeded, dataVolume.Name, 10*time.Minute)
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
