@@ -1284,11 +1284,11 @@ var _ = Describe("[vendor:cnv-qe@redhat.com][level:component]DataVolume tests", 
 			_, err = utils.WaitForPVC(f.K8sClient, f.Namespace.Name, dataVolume.Name)
 			Expect(err).ToNot(HaveOccurred())
 
-			By("Wait for import to start")
+			By("Wait for DV in ImportScheduled")
 			utils.WaitForDataVolumePhase(f.CdiClient, f.Namespace.Name, cdiv1.ImportInProgress, dataVolume.Name)
 
 			scratchPvcName := naming.GetResourceName(dataVolume.Name, common.ScratchNameSuffix)
-			By("Waiting for DV's scratch PVC " + scratchPvcName)
+			By("Waiting for scratch PVC " + scratchPvcName)
 			scratchPvc, err := utils.WaitForPVC(f.K8sClient, f.Namespace.Name, scratchPvcName)
 			Expect(err).ToNot(HaveOccurred())
 			scratchPvcUID := scratchPvc.GetUID()

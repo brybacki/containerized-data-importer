@@ -3,11 +3,11 @@ package controller
 import (
 	"context"
 	"fmt"
+	sdkapi "github.com/kubevirt/controller-lifecycle-operator-sdk/pkg/sdk/api"
 	"net/url"
 	"reflect"
 	"strconv"
-
-	sdkapi "github.com/kubevirt/controller-lifecycle-operator-sdk/pkg/sdk/api"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
@@ -691,6 +691,7 @@ func createImporterPod(log logr.Logger, client client.Client, image, verbose, pu
 	}
 
 	pod := makeImporterPodSpec(pvc.Namespace, image, verbose, pullPolicy, podEnvVar, pvc, scratchPvcName, podResourceRequirements, workloadNodePlacement, vddkImageName)
+	time.Sleep(3*time.Second)
 
 	if err := client.Create(context.TODO(), pod); err != nil {
 		return nil, err
