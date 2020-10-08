@@ -209,6 +209,7 @@ func CreateScratchPersistentVolumeClaim(client client.Client, pvc *v1.Persistent
 	scratchPvc := &v1.PersistentVolumeClaim{}
 	if err := client.Get(context.TODO(), types.NamespacedName{Name: scratchPvcSpec.Name, Namespace: pvc.Namespace}, scratchPvc); err != nil {
 		klog.Errorf("Unable to get scratch space pvc, %v\n", err)
+		return nil, err
 	}
 	klog.V(3).Infof("scratch PVC \"%s/%s\" created\n", scratchPvc.Namespace, scratchPvc.Name)
 	return scratchPvc, nil
