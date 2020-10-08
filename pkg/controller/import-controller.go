@@ -18,8 +18,10 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -143,15 +145,108 @@ func NewImportController(mgr manager.Manager, log logr.Logger, importerImage, pu
 	if err != nil {
 		return nil, err
 	}
-	if err := addImportControllerWatches(mgr, importController); err != nil {
+	if err := addImportControllerWatches(
+		mgr,
+		importController,
+		client,
+		log,
+	); err != nil {
 		return nil, err
 	}
 	return importController, nil
 }
 
-func addImportControllerWatches(mgr manager.Manager, importController controller.Controller) error {
+func addImportControllerWatches(mgr manager.Manager, importController controller.Controller, c client.Client, log logr.Logger) error {
 	// Setup watches
-	if err := importController.Watch(&source.Kind{Type: &corev1.PersistentVolumeClaim{}}, &handler.EnqueueRequestForObject{}); err != nil {
+
+	if err := importController.Watch(
+		&source.Kind{Type: &corev1.PersistentVolumeClaim{}},
+		handler.Funcs{
+			CreateFunc: func(evt event.CreateEvent, q workqueue.RateLimitingInterface) {
+				if evt.Meta == nil {
+					log.Error(nil, "CreateFunc received with no metadata", "event", evt)
+					return
+				}
+				q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
+					Name:      evt.Meta.GetName(),
+					Namespace: evt.Meta.GetNamespace(),
+				}})
+			},
+			UpdateFunc: func(evt event.UpdateEvent, q workqueue.RateLimitingInterface) {
+				if evt.MetaOld != nil {
+					q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
+						Name:      evt.MetaOld.GetName(),
+						Namespace: evt.MetaOld.GetNamespace(),
+					}})
+				} else {
+					log.Error(nil, "UpdateEvent received with no old metadata", "event", evt)
+				}
+
+				if evt.MetaNew != nil {
+					q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
+						Name:      evt.MetaNew.GetName(),
+						Namespace: evt.MetaNew.GetNamespace(),
+					}})
+				} else {
+					log.Error(nil, "UpdateEvent received with no new metadata", "event", evt)
+				}
+			},
+			DeleteFunc: func(evt event.DeleteEvent, q workqueue.RateLimitingInterface) {
+				if evt.Meta == nil {
+					log.Error(nil, "DeleteEvent received with no metadata", "event", evt)
+					return
+				}
+				log.V(0).Info("----------------> DeleteEvent 1", "event", evt)
+
+				pvc := evt.Object.(*corev1.PersistentVolumeClaim)
+				owner := metav1.GetControllerOf(pvc)
+				// it has an owner pod, so it has to be a scratch PVC, so we need to fetch the controlling PVC
+				// PVC -> importerPod -> scratchPVC
+				if owner != nil && owner.Kind == "Pod" {
+					log.V(0).Info("---------------->  DeleteEvent 2 for PVC owner", "scratchPvc", pvc.Name, "owner", owner)
+
+					controllingPod := &corev1.Pod{}
+					if err := c.Get(context.TODO(), types.NamespacedName{Name: owner.Name, Namespace: evt.Meta.GetNamespace()}, controllingPod); err != nil {
+						// TODO: assume this is a scratch PVC without owner - so return an error, or schedule event for the pvc?
+						log.V(0).Info("---------------->  DeleteEvent 3 for a pvc owned by a POD wich cannot be found",
+							"pvcName", pvc.Name,
+							"podName", types.NamespacedName{Name: owner.Name, Namespace: evt.Meta.GetNamespace()})
+
+						log.Error(err, "---------------->  Received DeleteEvent for a pvc owned by a POD wich cannot be found",
+							"pvcName", pvc.Name,
+							"podName", types.NamespacedName{Name: owner.Name, Namespace: evt.Meta.GetNamespace()})
+					} else {
+						controllingPvc := metav1.GetControllerOf(controllingPod)
+						log.V(0).Info("---------------->  DeleteEvent 4 for PVC ", "controllingPod", controllingPod.Name, "controllingPvc", controllingPvc)
+
+						if controllingPvc != nil && controllingPvc.Kind == "PersistentVolumeClaim" {
+							log.V(0).Info("---------------->  DeleteEvent 5 for PVC", "scratchPvc", pvc.Name, "controllingPvc", controllingPvc.Name)
+							q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
+								Name:      controllingPvc.Name,
+								Namespace: evt.Meta.GetNamespace(),
+							}})
+							return
+						}
+					}
+				}
+				log.V(0).Info("---------------->  DeleteEvent 6 for PVC - no owner", "scratchPvc", pvc.Name, "owner", owner, "kind", owner.Kind == "Pod")
+
+				q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
+					Name:      evt.Meta.GetName(),
+					Namespace: evt.Meta.GetNamespace(),
+				}})
+			},
+			GenericFunc: func(evt event.GenericEvent, q workqueue.RateLimitingInterface) {
+				if evt.Meta == nil {
+					log.Error(nil, "GenericEvent received with no metadata", "event", evt)
+					return
+				}
+				q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
+					Name:      evt.Meta.GetName(),
+					Namespace: evt.Meta.GetNamespace(),
+				}})
+			},
+		}); err != nil {
 		return err
 	}
 	if err := importController.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
