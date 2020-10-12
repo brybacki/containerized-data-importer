@@ -513,6 +513,9 @@ func getPodsUsingPVCs(c client.Client, namespace string, names sets.String, allo
 
 	var pods []v1.Pod
 	for _, pod := range pl.Items {
+		if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
+			continue
+		}
 		for _, volume := range pod.Spec.Volumes {
 			if volume.VolumeSource.PersistentVolumeClaim != nil &&
 				names.Has(volume.PersistentVolumeClaim.ClaimName) &&

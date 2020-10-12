@@ -196,31 +196,21 @@ func addImportControllerWatches(mgr manager.Manager, importController controller
 					log.Error(nil, "DeleteEvent received with no metadata", "event", evt)
 					return
 				}
-				log.V(0).Info("----------------> DeleteEvent 1", "event", evt)
 
 				pvc := evt.Object.(*corev1.PersistentVolumeClaim)
 				owner := metav1.GetControllerOf(pvc)
 				// it has an owner pod, so it has to be a scratch PVC, so we need to fetch the controlling PVC
 				// PVC -> importerPod -> scratchPVC
 				if owner != nil && owner.Kind == "Pod" {
-					log.V(0).Info("---------------->  DeleteEvent 2 for PVC owner", "scratchPvc", pvc.Name, "owner", owner)
-
 					controllingPod := &corev1.Pod{}
 					if err := c.Get(context.TODO(), types.NamespacedName{Name: owner.Name, Namespace: evt.Meta.GetNamespace()}, controllingPod); err != nil {
 						// TODO: assume this is a scratch PVC without owner - so return an error, or schedule event for the pvc?
-						log.V(0).Info("---------------->  DeleteEvent 3 for a pvc owned by a POD wich cannot be found",
-							"pvcName", pvc.Name,
-							"podName", types.NamespacedName{Name: owner.Name, Namespace: evt.Meta.GetNamespace()})
-
 						log.Error(err, "---------------->  Received DeleteEvent for a pvc owned by a POD wich cannot be found",
 							"pvcName", pvc.Name,
 							"podName", types.NamespacedName{Name: owner.Name, Namespace: evt.Meta.GetNamespace()})
 					} else {
 						controllingPvc := metav1.GetControllerOf(controllingPod)
-						log.V(0).Info("---------------->  DeleteEvent 4 for PVC ", "controllingPod", controllingPod.Name, "controllingPvc", controllingPvc)
-
 						if controllingPvc != nil && controllingPvc.Kind == "PersistentVolumeClaim" {
-							log.V(0).Info("---------------->  DeleteEvent 5 for PVC", "scratchPvc", pvc.Name, "controllingPvc", controllingPvc.Name)
 							q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
 								Name:      controllingPvc.Name,
 								Namespace: evt.Meta.GetNamespace(),
@@ -229,8 +219,6 @@ func addImportControllerWatches(mgr manager.Manager, importController controller
 						}
 					}
 				}
-				log.V(0).Info("---------------->  DeleteEvent 6 for PVC - no owner", "scratchPvc", pvc.Name, "owner", owner, "kind", owner.Kind == "Pod")
-
 				q.Add(reconcile.Request{NamespacedName: types.NamespacedName{
 					Name:      evt.Meta.GetName(),
 					Namespace: evt.Meta.GetNamespace(),
@@ -360,7 +348,7 @@ func (r *ImportReconciler) reconcilePvc(pvc *corev1.PersistentVolumeClaim, log l
 				for _, pod := range podsUsingPVC {
 					r.log.V(1).Info("can't create import pod, pvc in use by other pod",
 						"namespace", pvc.Namespace, "name", pvc.Name, "pod", pod.Name)
-					r.recorder.Eventf(pvc, corev1.EventTypeWarning, UploadTargetInUse,
+					r.recorder.Eventf(pvc, corev1.EventTypeWarning, ImportTargetInUse,
 						"pod %s/%s using PersistentVolumeClaim %s", pod.Namespace, pod.Name, pvc.Name)
 
 				}
