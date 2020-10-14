@@ -128,11 +128,12 @@ func NewImportController(mgr manager.Manager, log logr.Logger, importerImage, pu
 		Mapper: mgr.GetRESTMapper(),
 	})
 	client := mgr.GetClient()
+	name := log.WithName("import-controller")
 	reconciler := &ImportReconciler{
 		client:         client,
 		uncachedClient: uncachedClient,
 		scheme:         mgr.GetScheme(),
-		log:            log.WithName("import-controller"),
+		log:            name,
 		image:          importerImage,
 		verbose:        verbose,
 		pullPolicy:     pullPolicy,
@@ -204,8 +205,7 @@ func addImportControllerWatches(mgr manager.Manager, importController controller
 				if owner != nil && owner.Kind == "Pod" {
 					controllingPod := &corev1.Pod{}
 					if err := c.Get(context.TODO(), types.NamespacedName{Name: owner.Name, Namespace: evt.Meta.GetNamespace()}, controllingPod); err != nil {
-						// TODO: assume this is a scratch PVC without owner - so return an error, or schedule event for the pvc?
-						log.Error(err, "---------------->  Received DeleteEvent for a pvc owned by a POD wich cannot be found",
+						log.Error(err, "Received DeleteEvent for a pvc owned by a POD wich cannot be found",
 							"pvcName", pvc.Name,
 							"podName", types.NamespacedName{Name: owner.Name, Namespace: evt.Meta.GetNamespace()})
 					} else {
