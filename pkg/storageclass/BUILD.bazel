@@ -2,17 +2,32 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "go_default_library",
-    srcs = ["sc-analyzer.go"],
+    srcs = ["sc-capabilities.go"],
     importpath = "kubevirt.io/containerized-data-importer/pkg/storageclass",
     visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/github.com/pkg/errors:go_default_library",
+        "//vendor/k8s.io/api/storage/v1:go_default_library",
+        "//vendor/sigs.k8s.io/controller-runtime/pkg/client:go_default_library",
+    ],
 )
 
 go_test(
     name = "go_default_test",
-    srcs = ["sc-analyzer_test.go"],
+    srcs = [
+        "sc-capabilities_test.go",
+        "storagesclass_suite_test.go",
+    ],
     embed = [":go_default_library"],
     deps = [
+        "//tests/reporters:go_default_library",
         "//vendor/github.com/onsi/ginkgo:go_default_library",
         "//vendor/github.com/onsi/gomega:go_default_library",
+        "//vendor/k8s.io/api/storage/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
+        "//vendor/k8s.io/client-go/kubernetes/scheme:go_default_library",
+        "//vendor/sigs.k8s.io/controller-runtime/pkg/client:go_default_library",
+        "//vendor/sigs.k8s.io/controller-runtime/pkg/client/fake:go_default_library",
     ],
 )
