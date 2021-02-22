@@ -1260,7 +1260,7 @@ func (r *DatavolumeReconciler) renderPvcSpec(dv *cdiv1.DataVolume) (*corev1.Pers
 	}
 
 	if len(pvcSpecCopy.AccessModes) == 0 {
-		accessMode, err := getAccessMode(r.client, storageClass)
+		accessMode, err := getDefaultAccessMode(r.client, storageClass)
 		if err != nil {
 			r.log.V(1).Info("Cannot set accessMode for new pvc", "namespace", dv.Namespace, "name", dv.Name)
 			r.recorder.Eventf(dv, corev1.EventTypeWarning, ErrClaimNotValid,
@@ -1281,8 +1281,8 @@ func (r *DatavolumeReconciler) renderPvcSpec(dv *cdiv1.DataVolume) (*corev1.Pers
 }
 
 func getDefaultVolumeMode(c client.Client, storageClass *storagev1.StorageClass) (*corev1.PersistentVolumeMode, error) {
-	storageProfile := &cdiv1.StorageProfile{}
-	if err := c.Get(context.TODO(), types.NamespacedName{Name: storageClass.Name}, storageProfile); err != nil {
+	storageProfile, err := getStorageProfile(c, storageClass.Name)
+	if err != nil {
 		// TODO: should it default to nil and just ignore the error for optional params like volumeMode when not found?
 		// and only return some errors with communication
 		if k8serrors.IsNotFound(err) {
@@ -1299,11 +1299,12 @@ func getDefaultVolumeMode(c client.Client, storageClass *storagev1.StorageClass)
 	return nil, nil
 }
 
-func getAccessMode(c client.Client, storageClass *storagev1.StorageClass) (*corev1.PersistentVolumeAccessMode, error) {
-	storageProfile := &cdiv1.StorageProfile{}
-	if err := c.Get(context.TODO(), types.NamespacedName{Name: storageClass.Name}, storageProfile); err != nil {
+func getDefaultAccessMode(c client.Client, storageClass *storagev1.StorageClass) (*corev1.PersistentVolumeAccessMode, error) {
+	storageProfile, err := getStorageProfile(c, storageClass.Name)
+	if err != nil {
 		return nil, errors.Wrap(err, "no accessMode defined on DV, cannot get StorageProfile")
 	}
+
 	if len(storageProfile.Status.ClaimPropertySets) > 0 &&
 		len(storageProfile.Status.ClaimPropertySets[0].AccessModes) > 0 {
 		accessMode := storageProfile.Status.ClaimPropertySets[0].AccessModes[0]
@@ -1312,4 +1313,10 @@ func getAccessMode(c client.Client, storageClass *storagev1.StorageClass) (*core
 
 	// no accessMode configured on storageProfile
 	return nil, errors.Errorf("no accessMode defined on StorageProfile for %s StorageClass", storageClass.Name)
+}
+
+func getStorageProfile(c client.Client, name string) (*cdiv1.StorageProfile, error) {
+	storageProfile := &cdiv1.StorageProfile{}
+	err := c.Get(context.TODO(), types.NamespacedName{Name: name}, storageProfile)
+	return storageProfile, err
 }
