@@ -10,13 +10,14 @@ CDI provides a collection of Storage Profiles with default recommended values fo
 If the storage provisioner defined in storage class does not have defaults configured in CDI the resulting StorageProfile 
 has empty `claimPropertySets`.
 
-Storage profile maps 1:1 to StorageClass.
+CDI automatically creates the StorageProfile objects - one StorageProfile per 
+one StorageClass that exists in the cluster. Below StorageProfile for hostpath-provisioner as an example.
 
 ```yaml
 apiVersion: cdi.kubevirt.io/v1beta1
 kind: StorageProfile
 metadata: 
-  name: sample-storage-profile
+  name: hostpath-provisioner
 spec: 
   claimPropertySets: 
   - accessModes:
@@ -24,13 +25,17 @@ spec:
     volumeMode: 
       Filesystem
 status:
-    storageClass: <string>
-    provisioner: <string>
+    storageClass: hostpath-provisioner
+    provisioner: kubevirt.io/hostpath-provisioner
     claimPropertySets: 
-    - accessModes: array of [ReadWriteMany|ReadWriteOnce|ReadOnlyMany]
-      volumeMode: [Filesystem|Block]
+    - accessModes: 
+      - ReadWriteOnce
+      volumeMode: Filesystem
 ```
 
+Values for accessModes and volumeMode are exactly the same as for PVC: `accessModes` is a list of `[ReadWriteMany|ReadWriteOnce|ReadOnlyMany]`
+and `volumeMode` is a single value `Filesystem` or `Block`. Multiple claim property sets can be specified (`claimPropertySets` is a list) 
+but currently CDI will ignore all but the first one.
 
 ## Handling the DV with defaults from Storage Profiles 
 
