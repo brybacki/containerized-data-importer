@@ -1283,12 +1283,7 @@ func (r *DatavolumeReconciler) renderPvcSpec(dv *cdiv1.DataVolume) (*corev1.Pers
 func getDefaultVolumeMode(c client.Client, storageClass *storagev1.StorageClass) (*corev1.PersistentVolumeMode, error) {
 	storageProfile, err := getStorageProfile(c, storageClass.Name)
 	if err != nil {
-		// TODO: should it default to nil and just ignore the error for optional params like volumeMode when not found?
-		// and only return some errors with communication
-		if k8serrors.IsNotFound(err) {
-			return nil, nil
-		}
-		return nil, err
+		return nil, errors.Wrap(err, "no accessMode defined on DV, cannot get StorageProfile")
 	}
 	if len(storageProfile.Status.ClaimPropertySets) > 0 {
 		volumeMode := storageProfile.Status.ClaimPropertySets[0].VolumeMode
